@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chores — Loading…</title>
+    <meta http-equiv="refresh" content="0; url=./" />
+    <script>
+      // SPA fallback for GitHub Pages (Phase 5).
+      // Hash-based room links (#room=xyz) never reach the server, so this
+      // only fires for path-based deep links. Preserve the full URL
+      // (path + query + hash) and bounce back to the app root.
+      (function () {
+        try {
+          var hash = window.location.hash || '';
+          var search = window.location.search || '';
+          var base = window.location.pathname.split('/').slice(0, -1).join('/') + '/';
+          // Keep it simple: project sites live under /<repo>/ — go to its index.
+          var target = './' + search + hash;
+          // If we are already at the root index, do nothing (avoid loops).
+          if (!/404\.html$/.test(window.location.pathname)) return;
+          window.location.replace(target);
+        } catch (e) {
+          window.location.replace('./');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <p>Loading Chores… <a href="./">Continue to app</a></p>
+  </body>
+</html>

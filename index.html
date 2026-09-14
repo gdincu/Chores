@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Chores — Local-first chore board</title>
+    <meta
+      name="description"
+      content="Offline-first Kanban chore tracker with peer-to-peer sync. No account, no server."
+    />
+    <meta name="theme-color" content="#4f46e5" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="apple-touch-icon" href="./pwa-192x192.png" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">🧺</span>
+          <div>
+            <h1>Chores</h1>
+            <p class="subtitle">Local-first board · works offline</p>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <div class="net-status" title="Sync status">
+            <span id="netDot" class="dot offline" aria-hidden="true"></span>
+            <span id="netLabel">Offline · local only</span>
+            <span id="peerCount" class="peers" title="Connected peers">0 peers</span>
+          </div>
+          <button id="shareBtn" class="btn primary" type="button">🔗 Share board</button>
+          <button id="addBtn" class="btn accent" type="button">＋ Add chore</button>
+        </div>
+      </header>
+
+      <section class="toolbar" aria-label="Board tools">
+        <div class="room-chip" title="Current sync room">
+          <span class="room-label">Room</span>
+          <code id="roomIdLabel">local</code>
+        </div>
+        <input
+          id="searchInput"
+          class="search"
+          type="search"
+          placeholder="Filter chores…"
+          aria-label="Filter chores"
+        />
+        <select id="priorityFilter" class="select" aria-label="Filter by priority">
+          <option value="all">All priorities</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <button id="clearDoneBtn" class="btn ghost" type="button" title="Delete all cards in Done">
+          Clear done
+        </button>
+      </section>
+
+      <main class="board" id="board">
+        <section class="column" data-status="todo" aria-label="Todo">
+          <header class="column-head">
+            <h2>Todo</h2>
+            <span class="count" id="count-todo">0</span>
+          </header>
+          <div class="dropzone" id="col-todo"></div>
+          <button class="btn dashed add-col-btn" data-add="todo" type="button">＋ Add</button>
+        </section>
+
+        <section class="column" data-status="inprogress" aria-label="In Progress">
+          <header class="column-head">
+            <h2>In Progress</h2>
+            <span class="count" id="count-inprogress">0</span>
+          </header>
+          <div class="dropzone" id="col-inprogress"></div>
+          <button class="btn dashed add-col-btn" data-add="inprogress" type="button">
+            ＋ Add
+          </button>
+        </section>
+
+        <section class="column" data-status="done" aria-label="Done">
+          <header class="column-head">
+            <h2>Done</h2>
+            <span class="count" id="count-done">0</span>
+          </header>
+          <div class="dropzone" id="col-done"></div>
+          <button class="btn dashed add-col-btn" data-add="done" type="button">＋ Add</button>
+        </section>
+      </main>
+
+      <footer class="foot">
+        <span id="persistLabel">Saving locally…</span>
+        <span class="sep">·</span>
+        <span>Open the share link on a second device to sync peer-to-peer. No data leaves your browsers except via WebRTC.</span>
+      </footer>
+    </div>
+
+    <!-- Add / edit modal -->
+    <div class="modal-backdrop" id="taskModal" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="taskModalTitle">
+        <h2 id="taskModalTitle">Add chore</h2>
+        <form id="taskForm">
+          <input type="hidden" id="taskId" />
+          <label class="field">
+            <span>Title</span>
+            <input id="taskTitle" type="text" required maxlength="140" placeholder="e.g. Take out recycling" />
+          </label>
+          <div class="grid2">
+            <label class="field">
+              <span>Status</span>
+              <select id="taskStatus">
+                <option value="todo">Todo</option>
+                <option value="inprogress">In Progress</option>
+                <option value="done">Done</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Priority</span>
+              <select id="taskPriority">
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="low">Low</option>
+              </select>
+            </label>
+          </div>
+          <label class="field">
+            <span>Due date</span>
+            <input id="taskDue" type="date" />
+          </label>
+          <div class="modal-actions">
+            <button type="button" class="btn ghost" id="taskCancel">Cancel</button>
+            <button type="submit" class="btn accent" id="taskSave">Save chore</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Share modal -->
+    <div class="modal-backdrop" id="shareModal" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
+        <h2 id="shareTitle">Share this board</h2>
+        <p class="muted">
+          Anyone opening this link joins the same WebRTC room and syncs this board
+          directly with your browser. Keep the tab open while pairing.
+        </p>
+        <label class="field">
+          <span>Share link</span>
+          <div class="share-row">
+            <input id="shareUrl" type="text" readonly />
+            <button class="btn primary" id="copyLinkBtn" type="button">Copy</button>
+          </div>
+        </label>
+        <div class="share-grid">
+          <div>
+            <p class="muted small">Scan to join</p>
+            <img id="qrImg" alt="QR code for share link" width="180" height="180" />
+          </div>
+          <div class="share-meta">
+            <p><strong>Room ID:</strong> <code id="shareRoomId"></code></p>
+            <p class="muted small" id="shareHint">Peers connect automatically via public signaling; chore data flows browser-to-browser.</p>
+            <div class="modal-actions start">
+              <button class="btn ghost" id="newRoomBtn" type="button">New room</button>
+              <button class="btn ghost" id="shareClose" type="button">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

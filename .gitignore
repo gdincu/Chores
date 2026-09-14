@@ -1,0 +1,15 @@
+# deps / build
+node_modules/
+dist/
+dist-ssr/
+
+# logs / os
+*.log
+.DS_Store
+Thumbs.db
+
+# vite
+*.local
+
+# pwa
+dev-dist/

@@ -1,0 +1,22 @@
+{
+  "name": "chores",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local-first chores tracking PWA — Kanban board with Yjs CRDT + WebRTC P2P sync, hosted on GitHub Pages.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "y-indexeddb": "^9.0.12",
+    "y-webrtc": "^10.3.0",
+    "yjs": "^13.6.27"
+  },
+  "devDependencies": {
+    "vite": "^7.1.7",
+    "vite-plugin-pwa": "^1.0.0"
+  }
+}
