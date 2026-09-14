@@ -8,7 +8,28 @@ export const STATUSES = ['todo', 'inprogress', 'done']
 // NOTE: the old y-webrtc Heroku signaling servers have been dead since the
 // Heroku free-tier shutdown (Nov 2022). Listing dead servers only slows down
 // the handshake and makes sync look broken, so use the live community server.
-const SIGNALING = ['wss://signaling.yjs.dev']
+// Public y-webrtc signaling is community-run and occasionally unreachable
+// (see yjs/y-webrtc#43). Allow override without redeploying:
+//   https://<user>.github.io/Chores/?signaling=wss://your-server#room=xyz
+// or comma-separated for several. The override is preserved in share links.
+function signalingServers(fallback) {
+  try {
+    if (typeof window !== 'undefined') {
+      const q = new URLSearchParams(window.location.search).get('signaling')
+      if (q) {
+        const list = q
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => /^wss?:\/\/.+/.test(s))
+        if (list.length > 0) return list
+      }
+    }
+  } catch {
+    /* ignore malformed query strings */
+  }
+  return fallback
+}
+const SIGNALING = signalingServers(['wss://signaling.yjs.dev'])
 
 // Explicit STUN servers so host/candidate gathering works even if the
 // y-webrtc defaults change. (No TURN here — symmetric-NAT pairs may still
@@ -312,6 +333,14 @@ export function randomRoomId(length = 10) {
 
 export function shareUrlFor(roomId, loc = window.location) {
   const url = new URL(loc.href.split('#')[0])
+  // Carry a custom ?signaling= override into the share link so the guest
+  // uses the same signaling server as the host.
+  try {
+    const sig = new URLSearchParams(loc.search).get('signaling')
+    if (sig) url.searchParams.set('signaling', sig)
+  } catch {
+    /* ignore */
+  }
   url.hash = `room=${roomId}`
   return url.toString()
 }

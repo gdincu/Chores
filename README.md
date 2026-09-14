@@ -42,6 +42,19 @@ npm run preview  # preview the build
    WebRTC-blocking in-app browser)? Some symmetric-NAT / corporate networks
    need both devices on the same Wi-Fi or a TURN server.
 
+### If the public signaling server is down
+
+`wss://signaling.yjs.dev` is community-run and occasionally unreachable (see
+`yjs/y-webrtc#43`). The app keeps working locally regardless — sync resumes
+when signaling is reachable. Workarounds without redeploying:
+
+- Append `?signaling=wss://your-server` to the URL on **both** devices
+  (the Share button carries it into the QR/link automatically).
+- Run your own in one command (from the `y-webrtc` package's bundled server):
+  `PORT=4444 node ./node_modules/y-webrtc/bin/server.js`, then use
+  `?signaling=ws://<host>:4444`. Any host both devices can reach works —
+  same Wi-Fi is enough for testing.
+
 ## GitHub Pages setup
 
 1. Push to `main` — `.github/workflows/deploy.yml` builds and deploys `dist/`.
