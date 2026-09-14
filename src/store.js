@@ -5,13 +5,14 @@ import { WebrtcProvider } from 'y-webrtc'
 
 export const STATUSES = ['todo', 'inprogress', 'done']
 
-// NOTE: the old y-webrtc Heroku signaling servers have been dead since the
-// Heroku free-tier shutdown (Nov 2022). Listing dead servers only slows down
-// the handshake and makes sync look broken, so use the live community server.
-// Public y-webrtc signaling is community-run and occasionally unreachable
-// (see yjs/y-webrtc#43). Allow override without redeploying:
-//   https://<user>.github.io/Chores/?signaling=wss://your-server#room=xyz
-// or comma-separated for several. The override is preserved in share links.
+// LAN-only posture: no public signaling server is configured — the former
+// public one (signaling.yjs.dev) is a dangling DNS record to a deleted Heroku
+// app and does not resolve anywhere, so all references to external signaling
+// were removed. Point the app at your LAN server via ?signaling=
+// (e.g. ?signaling=ws://192.168.1.10:4444) or bake it in with the
+// VITE_SIGNALING_URL repo variable. With an empty list the app is still fully
+// usable offline and across same-browser tabs (BroadcastChannel); cross-device
+// sync joins as soon as a signaling URL is set.
 function signalingServers(fallback) {
   try {
     if (typeof window !== 'undefined') {
@@ -29,11 +30,14 @@ function signalingServers(fallback) {
   }
   return fallback
 }
-const SIGNALING = signalingServers(['wss://signaling.yjs.dev'])
+const baked =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SIGNALING_URL) || ''
+// Optional build-time default (repo variable VITE_SIGNALING_URL, e.g. a LAN
+// server URL). The ?signaling= query param in the URL still wins at runtime.
+const SIGNALING = signalingServers(baked ? [baked] : [])
 
-// Explicit STUN servers so host/candidate gathering works even if the
-// y-webrtc defaults change. (No TURN here — symmetric-NAT pairs may still
-// need both tabs on the same network or a TURN server.)
+// Explicit STUN servers so host/candidate gathering works on the LAN even if
+// the y-webrtc defaults change. (No TURN — keep peers on the same network.)
 const ICE_SERVERS = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] }
 ]

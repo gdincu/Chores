@@ -1,0 +1,14 @@
+{
+  "name": "chores-signaling",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Standalone y-webrtc signaling server for the Chores PWA. No chore data flows through it — it only introduces peers, which then sync over WebRTC.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "lib0": "^0.2.117",
+    "ws": "^8.21.3"
+  }
+}

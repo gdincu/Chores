@@ -6,7 +6,8 @@ Offline-first Kanban chore tracker (Todo / In Progress / Done) built for GitHub 
 - **Vite + Vanilla JS** — fast, zero-framework rendering
 - **vite-plugin-pwa** — Service Worker + Web App Manifest, boots instantly offline
 - **Yjs (CRDT)** + **y-indexeddb** — shared `Y.Doc` / `Y.Array('tasks')`, persisted to IndexedDB across reloads
-- **y-webrtc** — serverless WebRTC data channels for browser-to-browser sync (public signaling only for handshake)
+- **y-webrtc** — WebRTC data channels for browser-to-browser sync on your own
+  network (LAN signaling server in `signaling/`, handshake only)
 - **GitHub Pages + Actions** — static `dist/` deploy on every push to `main`
 
 ## Quick start
@@ -23,42 +24,36 @@ npm run preview  # preview the build
 1. Each board is a **room** (`#room=xyz123` in the URL hash).
 2. All edits mutate the shared Yjs document — mathematically mergeable, no conflicts.
 3. `y-indexeddb` persists the doc per-room (`chores-board-<roomId>`).
-4. `y-webrtc` streams binary updates over `RTCDataChannel`. The public signaling
-   server (`wss://signaling.yjs.dev`) exchanges only session descriptions / ICE
-   candidates — chore data flows browser-to-browser.
+4. `y-webrtc` streams binary updates over `RTCDataChannel`. Peers find each
+   other through a signaling server, which exchanges only session descriptions
+   / ICE candidates — chore data flows browser-to-browser. This app is
+   LAN-only by design: there is no public signaling server (the former
+   `wss://signaling.yjs.dev` is dead), so run the bundled one in `signaling/`
+   on a machine both devices can reach (see Sharing below).
 5. No peers online? The app works 100% locally and queued updates sync when a peer joins.
 6. Sample chores auto-seed only in the default `#room=local` board. Shared (QR)
    rooms start empty and pull state from the host — this avoids the duplicate
    seed race. Already-duplicated boards repair themselves on load, or via the
    **Fix duplicates** button.
 
-## Sharing
+## Sharing (same Wi-Fi)
 
-1. Click **🔗 Share board** → copy link or scan QR.
-2. Second device opens `https://<user>.github.io/Chores/#room=<id>`.
-3. Keep both tabs open while pairing — state pulls instantly. The header should
-   read **Live · synced P2P** with `1 peer` on both sides.
-4. If peers never connect: same room ID in both URLs? Both online (not via a
-   WebRTC-blocking in-app browser)? Some symmetric-NAT / corporate networks
-   need both devices on the same Wi-Fi or a TURN server.
-
-### If the public signaling server is down
-
-`wss://signaling.yjs.dev` is community-run and occasionally unreachable (see
-`yjs/y-webrtc#43`). The app keeps working locally regardless — sync resumes
-when signaling is reachable. Workarounds without redeploying:
-
-- Append `?signaling=wss://your-server` to the URL on **both** devices
-  (the Share button carries it into the QR/link automatically).
-- Run your own (bundled with the `y-webrtc` dependency, default port 4444):
-  `node ./node_modules/y-webrtc/bin/server.js`, then use
-  `?signaling=ws://<host>:4444`. Any host both devices can reach works.
-- HTTPS caveat: the live Pages app is HTTPS, so browsers block plain `ws://`
-  signaling as mixed content — a self-hosted server for the live app needs
-  `wss://` (TLS). For a quick same-Wi-Fi proof-test instead, run the app
-  itself over LAN HTTP: `npm run dev -- --host` on the PC, start the signaling
-  server above, and open `http://<pc-lan-ip>:5173/?signaling=ws://<pc-lan-ip>:4444#room=test`
-  on both devices.
+1. On one machine on your LAN, start the bundled signaling server:
+   `node signaling/server.js` (or `npm start --prefix signaling`, default port
+   `4444`; `/health` reports status).
+2. Serve the app over LAN HTTP: `npm run dev -- --host` (or
+   `npm run build && npm run preview -- --host` for the production build).
+3. Click **🔗 Share board** → copy link or scan QR, then add the signaling
+   server to the URL on **both** devices, e.g.
+   `http://<pc-lan-ip>:5173/?signaling=ws://<pc-lan-ip>:4444#room=<id>`
+   (the Share button carries an existing `?signaling=` into the QR/link
+   automatically).
+4. Keep both tabs open while pairing — state pulls instantly. The header should
+   read **Live · synced P2P** with `1 peer` on both sides. Use full
+   Chrome/Safari, not a QR-scanner in-app browser (those often block WebRTC).
+5. If the second device can't load the page at all, allow Node.js through the
+   host firewall. If the page loads but peers never connect, check both URLs
+   carry the same room ID and the same `?signaling=` host.
 
 ## GitHub Pages setup
 
@@ -75,6 +70,7 @@ index.html            # Kanban UI + modals
 src/main.js           # rendering, drag-drop, room + share logic
 src/store.js          # Yjs doc, y-indexeddb, y-webrtc provider
 src/style.css
+signaling/            # standalone LAN signaling server (Dockerfile included)
 vite.config.js        # base './' + VitePWA (manifest, workbox)
 public/               # favicon, PWA icons, robots, 404 fallback
 .github/workflows/   # Pages deploy
