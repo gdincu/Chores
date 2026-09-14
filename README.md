@@ -50,10 +50,15 @@ when signaling is reachable. Workarounds without redeploying:
 
 - Append `?signaling=wss://your-server` to the URL on **both** devices
   (the Share button carries it into the QR/link automatically).
-- Run your own in one command (from the `y-webrtc` package's bundled server):
-  `PORT=4444 node ./node_modules/y-webrtc/bin/server.js`, then use
-  `?signaling=ws://<host>:4444`. Any host both devices can reach works —
-  same Wi-Fi is enough for testing.
+- Run your own (bundled with the `y-webrtc` dependency, default port 4444):
+  `node ./node_modules/y-webrtc/bin/server.js`, then use
+  `?signaling=ws://<host>:4444`. Any host both devices can reach works.
+- HTTPS caveat: the live Pages app is HTTPS, so browsers block plain `ws://`
+  signaling as mixed content — a self-hosted server for the live app needs
+  `wss://` (TLS). For a quick same-Wi-Fi proof-test instead, run the app
+  itself over LAN HTTP: `npm run dev -- --host` on the PC, start the signaling
+  server above, and open `http://<pc-lan-ip>:5173/?signaling=ws://<pc-lan-ip>:4444#room=test`
+  on both devices.
 
 ## GitHub Pages setup
 
