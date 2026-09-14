@@ -23,15 +23,24 @@ npm run preview  # preview the build
 1. Each board is a **room** (`#room=xyz123` in the URL hash).
 2. All edits mutate the shared Yjs document — mathematically mergeable, no conflicts.
 3. `y-indexeddb` persists the doc per-room (`chores-board-<roomId>`).
-4. `y-webrtc` streams binary updates over `RTCDataChannel`. Public signaling servers
-   (`signaling.yjs.dev`, …) exchange only session descriptions / ICE candidates.
+4. `y-webrtc` streams binary updates over `RTCDataChannel`. The public signaling
+   server (`wss://signaling.yjs.dev`) exchanges only session descriptions / ICE
+   candidates — chore data flows browser-to-browser.
 5. No peers online? The app works 100% locally and queued updates sync when a peer joins.
+6. Sample chores auto-seed only in the default `#room=local` board. Shared (QR)
+   rooms start empty and pull state from the host — this avoids the duplicate
+   seed race. Already-duplicated boards repair themselves on load, or via the
+   **Fix duplicates** button.
 
 ## Sharing
 
 1. Click **🔗 Share board** → copy link or scan QR.
 2. Second device opens `https://<user>.github.io/Chores/#room=<id>`.
-3. Keep both tabs open while pairing — state pulls instantly.
+3. Keep both tabs open while pairing — state pulls instantly. The header should
+   read **Live · synced P2P** with `1 peer` on both sides.
+4. If peers never connect: same room ID in both URLs? Both online (not via a
+   WebRTC-blocking in-app browser)? Some symmetric-NAT / corporate networks
+   need both devices on the same Wi-Fi or a TURN server.
 
 ## GitHub Pages setup
 

@@ -38,20 +38,38 @@ function initStore(nextRoom) {
   if (store) store.destroy()
   roomId = nextRoom
   $('#roomIdLabel').textContent = roomId
+  // Shared (QR) rooms must NEVER auto-seed: a guest opening the link has an
+  // empty local IndexedDB, and seeding before the first WebRTC sync arrives
+  // is exactly what produced "duplicated tasks". Only the default 'local'
+  // room gets sample chores; shared rooms pull state from the host.
+  const isSharedRoom = nextRoom !== 'local'
 
   store = createStore(roomId, {
     onChange: render,
     onPersisted: () => {
       $('#persistLabel').textContent = 'Saved locally ✓ · IndexedDB'
-      store.seedIfEmpty()
+      // Repair boards duplicated by the old timestamp-seed race, then seed
+      // only the local room.
+      const removed = store.dedupeSeeds()
+      if (removed > 0) toast(`Removed ${removed} duplicate card${removed === 1 ? '' : 's'}`)
+      if (!isSharedRoom) store.seedIfEmpty()
       render()
     },
-    onPeers: updateNetStatus
+    onPeers: updateNetStatus,
+    onSync: () => {
+      // First successful sync with a peer: dedupe (guest may have briefly
+      // rendered host state + nothing else), then re-render + status.
+      const removed = store.dedupeSeeds()
+      if (removed > 0) toast(`Removed ${removed} duplicate card${removed === 1 ? '' : 's'}`)
+      render()
+      updateNetStatus()
+    }
   })
 
-  // Seed quickly for first paint; persistence 'synced' will re-render.
+  // Local room only: seed quickly for first paint; persistence 'synced'
+  // will re-render. Shared rooms intentionally stay empty until host sync.
   setTimeout(() => {
-    if (store.tasks.length === 0) store.seedIfEmpty()
+    if (!isSharedRoom && store.tasks.length === 0) store.seedIfEmpty()
     render()
     updateNetStatus()
   }, 50)
@@ -319,6 +337,12 @@ $('#clearDoneBtn').addEventListener('click', () => {
     store.clearDone()
     render()
   }
+})
+
+$('#dedupeBtn').addEventListener('click', () => {
+  const removed = store.dedupeSeeds()
+  render()
+  toast(removed > 0 ? `Removed ${removed} duplicate card${removed === 1 ? '' : 's'}` : 'No duplicates found')
 })
 
 $('#searchInput').addEventListener('input', (e) => {

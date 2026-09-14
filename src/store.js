@@ -5,10 +5,16 @@ import { WebrtcProvider } from 'y-webrtc'
 
 export const STATUSES = ['todo', 'inprogress', 'done']
 
-const SIGNALING = [
-  'wss://signaling.yjs.dev',
-  'wss://y-webrtc-signaling-eu.herokuapp.com',
-  'wss://y-webrtc-signaling-us.herokuapp.com'
+// NOTE: the old y-webrtc Heroku signaling servers have been dead since the
+// Heroku free-tier shutdown (Nov 2022). Listing dead servers only slows down
+// the handshake and makes sync look broken, so use the live community server.
+const SIGNALING = ['wss://signaling.yjs.dev']
+
+// Explicit STUN servers so host/candidate gathering works even if the
+// y-webrtc defaults change. (No TURN here — symmetric-NAT pairs may still
+// need both tabs on the same network or a TURN server.)
+const ICE_SERVERS = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] }
 ]
 
 function randomUser() {
@@ -35,8 +41,11 @@ export function createStore(roomId, events = {}) {
 
   const provider = new WebrtcProvider(`chores-${roomId}`, doc, {
     signaling: SIGNALING,
-    peerOpts: {},
-    maxConns: 20 + Math.floor(Math.random() * 15)
+    peerOpts: { config: { iceServers: ICE_SERVERS } },
+    maxConns: 20,
+    // Keep BroadcastChannel enabled (same-browser tabs sync instantly) AND
+    // WebRTC (cross-device). Filtering BC conns off would break tab sync.
+    filterBcConns: false
   })
 
   try {
@@ -46,9 +55,21 @@ export function createStore(roomId, events = {}) {
     // awareness is best-effort; local edits must never throw
   }
 
-  provider.on('peers', () => events.onPeers?.(provider))
-  provider.on('connection-close', () => events.onPeers?.(provider))
-  provider.on('connection-error', () => events.onPeers?.(provider))
+  // 'peers' fires on join/leave; awareness 'change' is a second signal.
+  // y-webrtc versions differ on sync events ('synced' vs 'sync'), so listen
+  // to both when available. All handlers are best-effort.
+  const notifyPeers = () => events.onPeers?.(provider)
+  const notifySync = (synced) => events.onSync?.(synced, provider)
+  try {
+    provider.on('peers', notifyPeers)
+    provider.on('connection-close', notifyPeers)
+    provider.on('connection-error', notifyPeers)
+    provider.on('synced', notifySync)
+    provider.on('sync', notifySync)
+    provider.awareness?.on?.('change', notifyPeers)
+  } catch {
+    /* older/newer y-webrtc without one of these events */
+  }
 
   tasks.observeDeep(() => events.onChange?.(snapshot()))
 
@@ -129,27 +150,81 @@ export function createStore(roomId, events = {}) {
     })
   }
 
+  // Seed exactly once per room. The `meta/seeded` flag itself syncs via Yjs,
+  // so even if two tabs call this concurrently before connecting, the second
+  // one's transaction is a no-op once the flag arrives. Seed IDs are fixed
+  // slugs (not timestamps) so retries never create new identities.
+  // Callers must still avoid racing the initial WebRTC sync: only auto-seed
+  // the default 'local' room; shared (QR) rooms start empty and pull state
+  // from the host. See initStore in main.js.
   function seedIfEmpty() {
-    if (tasks.length > 0) return
+    const meta = doc.getMap('meta')
+    if (meta.get('seeded')) return false
+    if (tasks.length > 0) return false
     doc.transact(() => {
-      const samples = [
-        { title: 'Take out recycling', status: 'todo', priority: 'medium', dueDate: '' },
-        { title: 'Vacuum living room', status: 'todo', priority: 'high', dueDate: '' },
-        { title: 'Water plants', status: 'inprogress', priority: 'low', dueDate: '' }
-      ]
+      if (meta.get('seeded') || tasks.length > 0) return
       const now = Date.now()
-      samples.forEach((s, k) => {
+      const samples = [
+        { id: 'seed-recycling', title: 'Take out recycling', status: 'todo', priority: 'medium' },
+        { id: 'seed-vacuum', title: 'Vacuum living room', status: 'todo', priority: 'high' },
+        { id: 'seed-plants', title: 'Water plants', status: 'inprogress', priority: 'low' }
+      ]
+      for (const s of samples) {
         const m = new Y.Map()
-        m.set('id', `seed-${now}-${k}`)
+        m.set('id', s.id)
         m.set('title', s.title)
         m.set('status', s.status)
-        m.set('dueDate', s.dueDate)
+        m.set('dueDate', '')
         m.set('priority', s.priority)
         m.set('createdAt', now)
         m.set('updatedAt', now)
         tasks.push([m])
-      })
+      }
+      meta.set('seeded', true)
     })
+    return true
+  }
+
+  // One-time repair for boards duplicated by the old timestamp-seed race
+  // (seed-<Date.now()>-<k> on both host and guest → 6 tasks instead of 3).
+  // Collapses tasks with identical normalized titles, keeping the oldest.
+  // Returns the number of removed cards.
+  function dedupeSeeds() {
+    const arr = tasks.toArray()
+    if (arr.length < 2) return 0
+    const seen = new Map() // normalized title -> index to keep
+    const removeIdx = []
+    arr.forEach((t, i) => {
+      const title = String(t.get('title') ?? '').trim().toLowerCase()
+      if (!title) return
+      if (!seen.has(title)) {
+        seen.set(title, i)
+        return
+      }
+      const keepIdx = seen.get(title)
+      const keep = arr[keepIdx]
+      const cur = t
+      // Keep the oldest; on tie keep the first-seen.
+      const keepTime = keep.get('createdAt') ?? 0
+      const curTime = cur.get('createdAt') ?? 0
+      if (curTime < keepTime) {
+        removeIdx.push(keepIdx)
+        seen.set(title, i)
+      } else {
+        removeIdx.push(i)
+      }
+    })
+    if (removeIdx.length === 0) return 0
+    doc.transact(() => {
+      for (const i of [...removeIdx].sort((a, b) => b - a)) {
+        try {
+          tasks.delete(i, 1)
+        } catch {
+          /* index shifted by a concurrent delete — safe to skip */
+        }
+      }
+    })
+    return removeIdx.length
   }
 
   function destroy() {
@@ -183,8 +258,24 @@ export function createStore(roomId, events = {}) {
     removeTask,
     clearDone,
     seedIfEmpty,
+    dedupeSeeds,
     destroy,
     peerCount() {
+      // NOTE: bcConns counts same-browser BroadcastChannel tabs, NOT network
+      // peers — using it made the UI show "0 peers" while connected. Prefer
+      // real WebRTC connections, fall back to awareness states.
+      try {
+        const rtc = provider.room?.webrtcConns?.size
+        if (typeof rtc === 'number' && rtc > 0) return rtc
+      } catch {
+        /* ignore */
+      }
+      try {
+        const aware = provider.awareness?.getStates?.().size
+        if (typeof aware === 'number' && aware > 1) return aware - 1
+      } catch {
+        /* ignore */
+      }
       try {
         return provider.room?.bcConns?.size ?? 0
       } catch {
